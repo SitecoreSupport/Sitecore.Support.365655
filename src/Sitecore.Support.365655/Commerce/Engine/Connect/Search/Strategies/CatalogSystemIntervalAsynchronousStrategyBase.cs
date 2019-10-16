@@ -58,12 +58,14 @@ namespace Sitecore.Support.Commerce.Engine.Connect.Search.Strategies
                         {
                             var sitecoreIdList = new List<ID>();
                             var entityIdList = new List<string>();
+
+                            // Update mappings once per batch.
+                            catalogRepository.UpdateMappingEntries(itemsList.Items.Max(x => x.DateUpdated.Value.UtcDateTime));
+
                             foreach (var entity in itemsList.Items.OfType<TCatalogEntity>())
                             {
                                 try
                                 {
-                                    catalogRepository.UpdateMappingEntries(entity.DateUpdated.Value.UtcDateTime);
-
                                     if (!string.IsNullOrWhiteSpace(entity.SitecoreId))
                                     {
                                         sitecoreIdList.Add(ID.Parse(entity.SitecoreId));
