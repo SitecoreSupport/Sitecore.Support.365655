@@ -101,6 +101,18 @@ namespace Sitecore.Support.Commerce.Engine.Connect.Search.Strategies
                             totalCount += entityIdList.Count;
                         }
                     } while (itemsList != null && itemsList.Items.Count > 0);
+
+                    if (allIds.Count() > 0)
+                    {
+                        var indexingCompletedEvent = new IndexingCompletedEvent
+                        {
+                            DatabaseName = this.DatabaseName,
+                            SitecoreIds = allIds.Select(x => x.Guid.ToString()).Distinct().ToArray()
+                        };
+
+                        var eventQueue = new DefaultEventQueueProvider();
+                        eventQueue.QueueEvent(indexingCompletedEvent, true, true);
+                    }
                 }
             }
             finally
