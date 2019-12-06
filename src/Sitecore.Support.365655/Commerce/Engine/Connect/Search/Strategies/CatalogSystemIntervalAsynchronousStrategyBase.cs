@@ -3,14 +3,17 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
+using Sitecore.Caching;
 using Sitecore.Commerce.Engine.Connect;
 using Sitecore.Commerce.Engine.Connect.DataProvider;
 using Sitecore.Commerce.Engine.Connect.Search;
 using Sitecore.Commerce.Plugin.Catalog;
 using Sitecore.Commerce.Plugin.ManagedLists;
+using Sitecore.Configuration;
 using Sitecore.ContentSearch;
 using Sitecore.ContentSearch.Maintenance;
 using Sitecore.Data;
+using Sitecore.Data.Items;
 using Sitecore.Eventing;
 using Sitecore.Support.Commerce.Engine.Connect.Events;
 
@@ -89,7 +92,7 @@ namespace Sitecore.Support.Commerce.Engine.Connect.Search.Strategies
                                 foreach (var sitecoreId in sitecoreIdList)
                                 {
                                     CatalogRepository.DefaultCache.RemovePrefix(sitecoreId.Guid.ToString());
-                                    EngineConnectUtility.RemoveItemFromSitecoreCaches(sitecoreId);
+                                    this.RemoveItemFromSitecoreCaches(sitecoreId, this.DatabaseName);
                                 }
 
                                 var indexIdList = sitecoreIdList.Select(id => new SitecoreItemUniqueId(new ItemUri(id, targetDatabase)));
@@ -120,6 +123,51 @@ namespace Sitecore.Support.Commerce.Engine.Connect.Search.Strategies
             finally
             {
                 this.LogMessage($"indexed {totalCount} entities in list '{this.IncrementalIndexListName}'.");
+            }
+        }
+
+
+        private void RemoveItemFromSitecoreCaches(ID itemID, string databaseName = null)
+        {
+            ID right = null;
+            if (itemID == right)
+            {
+                return;
+            }
+
+            if (!string.IsNullOrWhiteSpace(databaseName))
+            {
+                Database database = Factory.GetDatabase(databaseName, assert: false);
+                if (database != null)
+                {
+                    database.Caches.ItemCache.RemoveItem(itemID);
+                    database.Caches.DataCache.RemoveItemInformation(itemID);
+                    database.Caches.StandardValuesCache.RemoveKeysContaining(itemID.ToString());
+                    database.Caches.PathCache.RemoveKeysContaining(itemID.ToString());
+                    Item item = database.GetItem(itemID);
+                    if (item != null)
+                    {
+                        database.Caches.ItemPathsCache.Remove(new ItemPathCacheKey(item.Paths.FullPath, itemID));
+                    }
+                }
+            }
+            else
+            {
+                foreach (Database database2 in Factory.GetDatabases())
+                {
+                    if (database2 != null)
+                    {
+                        database2.Caches.ItemCache.RemoveItem(itemID);
+                        database2.Caches.DataCache.RemoveItemInformation(itemID);
+                        database2.Caches.StandardValuesCache.RemoveKeysContaining(itemID.ToString());
+                        database2.Caches.PathCache.RemoveKeysContaining(itemID.ToString());
+                        Item item2 = database2.GetItem(itemID);
+                        if (item2 != null)
+                        {
+                            database2.Caches.ItemPathsCache.Remove(new ItemPathCacheKey(item2.Paths.FullPath, itemID));
+                        }
+                    }
+                }
             }
         }
     }

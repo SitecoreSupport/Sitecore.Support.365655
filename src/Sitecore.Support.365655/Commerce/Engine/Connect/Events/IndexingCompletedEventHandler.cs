@@ -5,6 +5,7 @@ using Sitecore.Data;
 using Sitecore.Data.Items;
 using Sitecore.Diagnostics;
 using Sitecore.Events;
+using Sitecore.Sites;
 using Sitecore.StringExtensions;
 using Sitecore.Web;
 using System;
@@ -60,24 +61,46 @@ namespace Sitecore.Support.Commerce.Engine.Connect.Events
                     Item item = database.GetItem(result);
                     if (item != null)
                     {
-                        Log.Info(string.Format("{0} - Removing '{1}' in database:{2} from caches.", "OnIndexingCompleted", result, database.Name), this);
-                        CatalogRepository.DefaultCache.RemovePrefix(text);
-                        database.Caches.ItemCache.RemoveItem(result);
-                        database.Caches.DataCache.RemoveItemInformation(result);
-                        database.Caches.StandardValuesCache.RemoveKeysContaining(result.ToString());
-                        database.Caches.PathCache.RemoveKeysContaining(result.ToString());
-                        database.Caches.ItemPathsCache.Remove(new ItemPathCacheKey(item.Paths.FullPath, result));
-                        SiteInfo site = GetSite(item);
-                        if (site != null)
+                        string sku = CatalogRepository.MappingEntries.FirstOrDefault(m => 
+                        m.Key.Contains(result.Guid.ToString("D").ToLowerInvariant())).Value?
+                        .Replace("Entity-SellableItem-", string.Empty);
+
+                        var allSitecoreIds = CatalogRepository.MappingEntries
+                            .Where(m => m.Value != null && m.Value.Contains(sku)).Select(s => s.Key).ToList();
+
+                        // add also the original id to that list
+                        allSitecoreIds.Add(result.Guid.ToString("D").ToLowerInvariant());
+
+                        foreach (var itemIdText in allSitecoreIds)
                         {
-                            Log.Info("Using Host name '" + site.HostName + "' with Site '" + site.Name + "' for HTML cache selective refresh", this);
-                            HtmlCache htmlCache = site.HtmlCache;
-                            if (htmlCache != null)
+                            Log.Info(string.Format("{0} - Removing '{1}' in database:{2} from caches.", "OnIndexingCompleted", result, database.Name), this);
+                            CatalogRepository.DefaultCache.RemovePrefix(itemIdText);
+
+                            var itemID = new ID(itemIdText);
+
+                            database.Caches.ItemCache.RemoveItem(itemID);
+                            database.Caches.DataCache.RemoveItemInformation(itemID);
+                            database.Caches.StandardValuesCache.RemoveKeysContaining(itemIdText);
+                            database.Caches.PathCache.RemoveKeysContaining(itemIdText);
+                            Item itemForPathCache = database.GetItem(itemID);
+                            if (item != null)
                             {
-                                htmlCache.RemoveKeysContaining(item.Name);
-                                htmlCache.RemoveKeysContaining(text);
+                                database.Caches.ItemPathsCache.Remove(new ItemPathCacheKey(itemForPathCache.Paths.FullPath, itemID));
                             }
                         }
+
+                        this.CleanupHtmlCaches(sku);
+                        //SiteInfo site = GetSite(item);
+                        //if (site != null)
+                        //{
+                        //    Log.Info("Using Host name '" + site.HostName + "' with Site '" + site.Name + "' for HTML cache selective refresh", this);
+                        //    HtmlCache htmlCache = site.HtmlCache;
+                        //    if (htmlCache != null)
+                        //    {
+                        //        htmlCache.RemoveKeysContaining(item.Name);
+                        //        htmlCache.RemoveKeysContaining(text);
+                        //    }
+                        //}
                     }
                     else
                     {
@@ -131,6 +154,27 @@ namespace Sitecore.Support.Commerce.Engine.Connect.Events
         {
             IndexingCompletedEventArgs args = new IndexingCompletedEventArgs(evt);
             Event.RaiseEvent("indexing:completed:remote", args);
+        }
+
+        private void CleanupHtmlCaches(string sku)
+        {
+            try
+            {
+                var htmlCaches = CacheManager.GetAllCaches().Where(c => c.Name.Contains("[html]"));
+                if (htmlCaches.Any())
+                {
+                    foreach (var cache in htmlCaches)
+                    {
+                        var htmlCache = CacheManager.GetHtmlCache(
+                            SiteContext.GetSite(cache.Name.Substring(0, cache.Name.IndexOf('['))));
+                        htmlCache.RemoveKeysContaining(sku.Replace(" ", "-"));
+                    }
+                }
+            }
+            catch (Exception e)
+            {
+                Sitecore.Diagnostics.Log.Error("RefreshCache for product update throws the exeption", e, this);
+            }
         }
     }
 }
